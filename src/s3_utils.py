@@ -2,6 +2,8 @@ import boto3
 import json
 import os
 from botocore import config
+import threading
+import sys
 from botocore.retries import bucket
 from boto3.s3.transfer import TransferConfig
 
@@ -107,9 +109,38 @@ def upload_small_file(bucket_name, file_path, file_key):
     return s3_client().upload_file(file_path, bucket_name, file_key)
 
 
-def upload_large_file(filepath, file_name):
+def upload_large_file(bucket_name, file_path, file_name):
     config = TransferConfig(multipart_threshold=1024*25, max_concurrency=10,
                             multipart_chunksize=1024*25, use_threads=True)
+    s3_resource().meta.client.upload_file(file_path, bucket_name, file_name,
+                                          ExtraArgs={'ACL': 'public-read',
+                                                     'ContentType': 'text/pdf'},
+                                          Config=config,
+                                          Callback=ProgressPercentage(file_path))
+
+
+class ProgressPercentage(object):
+    def __init__(self, filename):
+        self._filename = filename
+        self._size = float(os.path.getsize(filename))
+        self._seen_do_far = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, bytes_amount):
+        with self._lock:
+            self._seen_do_far += bytes_amount
+            percentage = (self._seen_do_far/self._size) * 100
+            sys.stdout.write(
+                "\r%s  %s / %s (%.2f%%)" % (
+                    self._filename, self._seen_do_far, self._size, percentage
+                )
+            )
+            sys.stdout.flush()
+
+
+def read_object_from_bucket(bucket_name, object_key):
+
+    return s3_client().get_object(Bucket=bucket_name, Key=object_key)
 
 
 if __name__ == '__main__':
@@ -122,6 +153,11 @@ if __name__ == '__main__':
     # print(update_bucket_policy(BUCKET_NAME))
     # print(server_side_encrypt_bucket(BUCKET_NAME))
     # print(delete_bucket(bucket_name=BUCKET_NAME))
-    file_name = 'readme.txt'
-    file_path = '/Users/thimothekonchou/Documents/DataSience/Data-Migration-SQLServer-SnowFlake/README.md'
-    print(upload_small_file(BUCKET_NAME, file_path, file_name))
+    #file_name = 'readme.txt'
+    #file_path = '/Users/thimothekonchou/Documents/DataSience/Data-Migration-SQLServer-SnowFlake/README.md'
+    #file_path = '/Users/thimothekonchou/Documents/DataSience/Data-Migration-SQLServer-SnowFlake/9781789346640-NEURAL_NETWORKS_WITH_KERAS_COOKBOOK.pdf'
+    #file_name = 'keras-cookbook'
+    #print(upload_small_file(BUCKET_NAME, file_path, file_name))
+    #upload_large_file(BUCKET_NAME, file_path, file_name)
+
+    #print(read_object_from_bucket(BUCKET_NAME, file_name))
